@@ -39,16 +39,6 @@ This assistant is designed **only for legal information purposes** and does not 
 
 ---
 
-## 📂 Project Structure
-
-```
-Legal-AI-Chatbot
-│
-├── index.html        # Main chatbot interface
-├── favicon.jpg       # Website icon
-├── README.md         # Project documentation
-```
-
 ---
 
 ## ⚙️ How to Run the Project
