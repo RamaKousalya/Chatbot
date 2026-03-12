@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<link rel="stylesheet" href="Style.css">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Legal AI Chatbot</title>
+<link rel="icon" type="image/png" href="favicon.jpg">
+
+<!-- PDF Reader -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<!-- DOCX Reader -->
+<script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+
+
+
+</head>
+
+<body>
+
+<header>Legal AI Chatbot</header>
+
+<div class="container">
+
+<div class="sidebar">
+
+<h3>Upload Legal Document</h3>
+
+<div class="upload-box">
+
+Upload PDF or DOCX or Image
+
+<br><br>
+
+<input type="file" id="docUpload" accept=".pdf,.docx,.png,.jpg,.jpeg">
+
+<div class="file-name" id="fileName"></div>
+
+</div>
+
+<p class="notice">
+⚠ Upload only legal documents such as bonds, agreements, contracts or affidavits.  
+Sensitive data like Aadhaar, PAN, phone numbers and emails will be masked automatically.
+</p>
+
+<div class="prompt-area">
+
+<h3>Ask Question</h3>
+
+<textarea id="docPrompt" placeholder="Ask something about the document..."></textarea>
+
+<button class="send-btn" onclick="sendPrompt()">Send to Chatbot</button>
+
+<button class="newchat-btn" onclick="startNewChat()">New Chat</button>
+
+</div>
+
+</div>
+
+<div class="chatbot-area">
+
+<div id="widget-status">Loading chatbot...</div>
+
+<div id="chatbot-container"></div>
+
+</div>
+
+</div>
+
+<script>
+
+const upload=document.getElementById("docUpload");
+const fileName=document.getElementById("fileName");
+
+let documentText="";
+
+const allowedKeywords=[
+"bond",
+"agreement",
+"contract",
+"affidavit",
+"lease",
+"deed",
+"nda",
+"legal",
+"aadhaar",
+"aadhar"
+];
+
+upload.addEventListener("change",async function(){
+
+if(this.files.length===0) return;
+
+const file=this.files[0];
+
+const allowedTypes=[
+"application/pdf",
+"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+"image/png",
+"image/jpeg",
+"image/jpg"
+];
+
+if(!allowedTypes.includes(file.type)){
+alert("Only real PDF or DOCX files allowed.");
+this.value="";
+return;
+}
+
+if(file.size>5*1024*1024){
+alert("File must be under 5MB.");
+this.value="";
+return;
+}
+
+fileName.innerText="Processing "+file.name;
+
+if(file.type==="application/pdf"){
+documentText=await extractPDF(file);
+}
+
+else if(file.type.includes("wordprocessingml")){
+documentText=await extractDOCX(file);
+}
+
+else if(file.type.includes("image")){
+documentText=await extractImage(file);
+}
+
+documentText=maskSensitiveData(documentText);
+
+const textCheck = documentText.toLowerCase();
+
+if(
+ !textCheck.includes("agreement") &&
+ !textCheck.includes("contract") &&
+ !textCheck.includes("bond") &&
+ !textCheck.includes("affidavit") &&
+ !textCheck.includes("lease")
+){
+ alert("This does not appear to be a legal document.");
+ this.value="";
+ fileName.innerText="";
+ return;
+}
+
+fileName.innerText="Document Ready ✔";
+
+});
+
+async function extractPDF(file){
+
+const arrayBuffer=await file.arrayBuffer();
+
+const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+
+let text="";
+
+for(let i=1;i<=pdf.numPages;i++){
+
+const page=await pdf.getPage(i);
+
+const content=await page.getTextContent();
+
+const strings=content.items.map(item=>item.str);
+
+text+=strings.join(" ");
+
+}
+
+return text;
+
+}
+
+async function extractDOCX(file){
+
+const arrayBuffer=await file.arrayBuffer();
+
+const result=await mammoth.extractRawText({arrayBuffer});
+
+return result.value;
+
+}
+
+async function extractImage(file){
+
+fileName.innerText="Reading image...";
+
+const result = await Tesseract.recognize(
+file,
+'eng',
+{ logger: m => console.log(m) }
+);
+
+return result.data.text;
+
+}
+
+function maskSensitiveData(text){
+
+if(!text) return "";
+
+text=text.replace(/\b\d{4}\s?\d{4}\s?\d{4}\b/g,"[AADHAAR REDACTED]");
+
+text=text.replace(/[A-Z]{5}[0-9]{4}[A-Z]{1}/g,"[PAN REDACTED]");
+
+text=text.replace(/\b\d{10}\b/g,"[PHONE REDACTED]");
+
+text=text.replace(/\S+@\S+\.\S+/g,"[EMAIL REDACTED]");
+
+return text;
+
+}
+
+function sendPrompt(){
+
+const textarea=document.getElementById("docPrompt");
+const prompt=textarea.value.trim();
+
+if(prompt.length===0){
+alert("Enter a prompt first");
+return;
+}
+
+if(!window.voiceflow || !window.voiceflow.chat){
+alert("Chatbot not ready yet");
+return;
+}
+
+const finalPrompt=
+`Document Context:
+${documentText.substring(0,4000)}
+
+User Question:
+${prompt}`;
+
+window.voiceflow.chat.interact({
+type:'text',
+payload:finalPrompt
+});
+
+textarea.value="";
+
+}
+
+function startNewChat(){
+
+// reset document context
+documentText="";
+document.getElementById("docPrompt").value="";
+document.getElementById("fileName").innerText="";
+
+// clear stored chatbot sessions
+localStorage.clear();
+sessionStorage.clear();
+
+// reload page with a new session parameter
+window.location.href = window.location.pathname + "?session=" + Date.now();
+
+}
+
+</script>
+
+<script>
+function loadChatbot(){
+
+window.voiceflow.chat.load({
+
+verify:{projectID:'69ac4f119e97a6c1e5d35c98'},
+url:'https://general-runtime.voiceflow.com',
+versionID:'69ac4f119e97a6c1e5d35c99',
+
+user:{
+id:"user_"+Math.random().toString(36).substring(2)
+},
+
+render:{
+mode:'embedded',
+target:document.getElementById("chatbot-container")
+},
+
+autostart:true,
+
+assistant:{
+onReady: () => {
+document.getElementById("widget-status").textContent="Chatbot Ready";
+}
+
+}
+
+});
+
+}
+
+(function(d,t){
+
+var v=d.createElement(t),s=d.getElementsByTagName(t)[0];
+
+v.onload=function(){
+
+document.getElementById("widget-status").textContent="Chatbot Ready";
+
+loadChatbot();
+
+};
+
+
+v.src="https://cdn.voiceflow.com/widget-next/bundle.mjs";
+
+v.type="text/javascript";
+
+s.parentNode.insertBefore(v,s);
+
+})(document,"script");
+
+</script>
+
+</body>
+</html>
